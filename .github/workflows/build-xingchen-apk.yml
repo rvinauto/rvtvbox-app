@@ -10,7 +10,7 @@ on:
       - '.github/workflows/build-xingchen-apk.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -26,11 +26,26 @@ jobs:
       - name: Build APK
         run: bash xingchen/scripts/build.sh
 
-      - name: Upload APK
+      - name: Upload APK artifact (best-effort)
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: xingchen-apk
-          path: |
-            xingchen-src/app/build/outputs/apk/**/*.apk
-            xingchen-src/app/build/outputs/apk/**/*.json
+          path: xingchen-src/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
+
+      - name: Publish APK as release asset (artifact quota may be full)
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          APK="$(ls -1 xingchen-src/app/build/outputs/apk/*/*/*.apk 2>/dev/null | head -1)"
+          if [ -z "$APK" ]; then echo "没找到 APK"; exit 1; fi
+          ls -lh "$APK"; sha256sum "$APK"
+          TAG="apk-${{ github.run_number }}"
+          gh release create "$TAG" "$APK" \
+            --title "$TAG XingChen" \
+            --notes "自动构建 ${{ github.sha }} / run ${{ github.run_number }}" \
+            || gh release upload "$TAG" "$APK" --clobber
+          gh release view "$TAG" --json url -q .url
