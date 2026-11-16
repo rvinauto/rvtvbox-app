@@ -1,0 +1,49 @@
+name: build-webhtv-apk
+
+# 出「已吸收上游 fish2018/webhtv 修复」的 WebHTV APK。
+# 基线是 fork Silent1566/webhtv（1776 个提交的功能主线），再叠加 3 个上游修复。
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'webhtv/**'
+      - '.github/workflows/build-webhtv-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'jetbrains'
+          java-version: '21.0.3'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK 37 / build-tools 37 / NDK 29 / CMake 3.22.1
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          for p in "platforms;android-37.0" "platforms;android-37.1" "platforms;android-37.2" \
+                   "build-tools;37.0.0" "ndk;29.0.14206865" "cmake;3.22.1"; do
+            echo "--- $p"
+            sdkmanager "$p" >/dev/null 2>&1 || echo "[warn] $p 装不上，交给 AGP 自动下载"
+          done
+
+      - name: Build absorbed APK
+        run: bash webhtv/scripts/build-apk.sh "$RUNNER_TEMP/webhtv-fork"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: webhtv-absorbed-apk
+          path: ${{ runner.temp }}/webhtv-fork/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error

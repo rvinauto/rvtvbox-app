@@ -6,7 +6,8 @@ x86_64 runner 上编译，**不需要 qemu、不需要 arm64 宿主**。
 | 目录 / 工作流 | 作用 | 耗时 |
 |---|---|---|
 | `xingchen/` + `build-xingchen-apk.yml` | 拉 XingChen 源码 @ `52450c04`，下载 mihomo/sherpa，出 **arm64 release APK** 并作为 artifact 上传 | 20–40 min |
-| `webhtv/` + `verify-webhtv-absorb.yml` | 拉 fork @ `852d8428`，打上游 3 个修复补丁，编译 **两个 ABI** + 跑 native 校验 | 8–15 min |
+| `webhtv/` + `build-webhtv-apk.yml` | 拉 fork @ `852d8428`，打上游 3 个修复补丁，出 **WebHTV 改进版 APK** | 20–40 min |
+| `webhtv/` + `verify-webhtv-absorb.yml` | 同一套补丁，只编 Java 双 ABI + 跑 native 校验（快） | 8–15 min |
 
 ## 为什么不在本机编译
 
@@ -54,10 +55,18 @@ git remote add origin git@github.com:<you>/<repo>.git && git push -u origin main
 .github/workflows/build-xingchen-apk.yml
 .github/workflows/verify-webhtv-absorb.yml
 xingchen/scripts/build.sh          # 取源码 + 下依赖 + 临时签名 + 出包
-webhtv/scripts/apply.sh            # 取 fork + git apply 补丁 + 双 ABI 编译
+webhtv/scripts/apply.sh            # 取 fork + git apply 补丁 + 双 ABI 编译（校验用）
+webhtv/scripts/build-apk.sh        # 同上但出 APK（改进版）
 webhtv/patches/                    # 3 个上游补丁 + 已解冲突的合并补丁
 webhtv/docs/吸收方案.md             # 两个 webhtv 仓库的优点吸收方案
 ```
+
+## 两个 APK 的区别（容易混）
+
+- `build-xingchen-apk` 出的 APK 是**原版星辰播放器**（XingChen @ `52450c04`），一个字节的代码都没改，
+  与官方发布版等价（仅 CI 临时签名、mihomo 内核现下）。它**不含**任何 webhtv 的改动。
+- `build-webhtv-apk` 出的 APK 才是**吸收了上游修复的 WebHTV**：基线是 fork 的 1776 个提交功能主线，
+  再叠加 pan 代理 jar 生命周期、ARMv7 libass 双 ABI、直播状态栏 inset 三处修复。
 
 ## 备注
 
