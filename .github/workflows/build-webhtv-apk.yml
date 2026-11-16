@@ -2,8 +2,14 @@ name: build-webhtv-apk
 
 # 出「已吸收上游 fish2018/webhtv 修复」的 WebHTV APK。
 # 基线是 fork Silent1566/webhtv（1776 个提交的功能主线），再叠加 3 个上游修复。
+# 变体：mobile/leanback × arm64-v8a/armeabi-v7a，四个并行。
 on:
   workflow_dispatch:
+    inputs:
+      build_leanback:
+        description: '同时构建电视端（leanback）变体'
+        type: boolean
+        default: false
   push:
     branches: [ main ]
     paths:
@@ -17,35 +23,57 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: mobileArm64_v8a
+            name: mobile-arm64
+            leanback: false
+          - flavor: mobileArmeabi_v7a
+            name: mobile-v7a
+            leanback: false
+          - flavor: leanbackArm64_v8a
+            name: leanback-arm64
+            leanback: true
+          - flavor: leanbackArmeabi_v7a
+            name: leanback-v7a
+            leanback: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Android build env (JDK 21 + Python 3.10 + SDK 37)
         uses: ./.github/actions/setup-android-env
 
-      - name: Build absorbed APK
+      - name: Build ${{ matrix.name }}
+        if: (!matrix.leanback) || inputs.build_leanback
+        env:
+          TASK: :app:assemble${{ matrix.flavor }}Release
         run: bash webhtv/scripts/build-apk.sh "$RUNNER_TEMP/webhtv-fork"
 
       - name: Upload APK artifact (best-effort)
+        if: (!matrix.leanback) || inputs.build_leanback
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: webhtv-absorbed-apk
-          path: ${{ runner.temp }}/webhtv-fork/app/build/outputs/apk/**/*.apk
+          name: webhtv-${{ matrix.name }}
+          path: ${{ runner.temp }}/webhtv-fork/app/build/outputs/apk/${{ matrix.flavor }}/release/*.apk
           if-no-files-found: error
 
       - name: Publish APK as release asset (artifact quota may be full)
-        if: success()
+        if: (!matrix.leanback) || inputs.build_leanback
         env:
           GH_TOKEN: ${{ github.token }}
+          FLAVOR: ${{ matrix.flavor }}
+          LABEL: ${{ matrix.name }}
         run: |
           set -e
-          APK="$(ls -1 "$RUNNER_TEMP"/webhtv-fork/app/build/outputs/apk/*/*/*.apk 2>/dev/null | head -1)"
+          APK="$(ls -1 "$RUNNER_TEMP"/webhtv-fork/app/build/outputs/apk/"$FLAVOR"/release/*.apk 2>/dev/null | head -1)"
           if [ -z "$APK" ]; then echo "没找到 APK"; exit 1; fi
           ls -lh "$APK"; sha256sum "$APK"
-          TAG="apk-${{ github.run_number }}"
+          TAG="apk-${{ github.run_number }}-$LABEL"
           gh release create "$TAG" "$APK" \
-            --title "$TAG WebHTV" \
-            --notes "自动构建 ${{ github.sha }} / run ${{ github.run_number }}" \
+            --title "$TAG WebHTV $LABEL" \
+            --notes "自动构建 ${{ github.sha }} / run ${{ github.run_number }} / 变体 $LABEL" \
             || gh release upload "$TAG" "$APK" --clobber
           gh release view "$TAG" --json url -q .url
