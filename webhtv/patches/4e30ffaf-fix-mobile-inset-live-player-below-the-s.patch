@@ -1,0 +1,86 @@
+From 4e30ffaf219b1db15fe5662aeff6f9820e2b32bf Mon Sep 17 00:00:00 2001
+From: "www.xueximeng.com" <admin@xueximeng.com>
+Date: Wed, 7 Oct 2026 10:54:36 +0800
+Subject: [PATCH] fix(mobile): inset live player below the status bar
+
+Verification: Mobile arm64-v8a debug resources, ViewBinding and Java compilation passed: :app:compileMobileArm64_v8aDebugJavaWithJavac --offline (BUILD SUCCESSFUL in 3m 52s). Regression tests omitted at user request. Log: /private/tmp/webhtv-mobile-live-statusbar-20261007-compile-authorized.log. Pre-fix HEAD matched live origin/main e519fdefefa46bccc6f7a86b97062f9d8e2b03e8.
+
+Task-Guard: mobile-live-statusbar-20261007
+---
+ .../android/tv/ui/activity/LiveActivity.java       | 14 +++++++++++++-
+ app/src/mobile/res/layout/activity_live.xml        |  6 ++++++
+ 2 files changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/app/src/mobile/java/com/fongmi/android/tv/ui/activity/LiveActivity.java b/app/src/mobile/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
+index 9e2e9d84..01ec1ef0 100644
+--- a/app/src/mobile/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
++++ b/app/src/mobile/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
+@@ -345,6 +345,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
+ 
+     private void setupWindowInsets() {
+         ViewCompat.setOnApplyWindowInsetsListener(mBinding.getRoot(), (view, insets) -> {
++            updateLiveStatusBarInset(insets);
+             updateLiveListBottomInset(insets);
+             return insets;
+         });
+@@ -1821,6 +1822,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
+     @Override
+     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, @NonNull Configuration newConfig) {
+         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
++        updateLiveStatusBarInset(ViewCompat.getRootWindowInsets(mBinding.getRoot()));
+         if (isInPictureInPictureMode) {
+             dismissLiveControlDialog();
+             hideControl();
+@@ -1887,6 +1889,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
+             keepLiveMenuVisible();
+         }
+         embeddedUiMode = embedded;
++        updateLiveStatusBarInset(ViewCompat.getRootWindowInsets(mBinding.getRoot()));
+         updateControlInsets();
+         updateVideoHeight(videoSize);
+         applyLiveResizeMode(LiveSetting.getScale());
+@@ -1941,7 +1944,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
+         if (mBinding.getRoot() instanceof LinearLayoutCompat root) {
+             LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0);
+             params.weight = 14;
+-            root.addView(mBinding.recycler, Math.min(1, root.getChildCount()), params);
++            root.addView(mBinding.recycler, root.indexOfChild(mBinding.video) + 1, params);
+         } else if (mBinding.getRoot() instanceof FrameLayout root) {
+             root.addView(mBinding.recycler, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START));
+         }
+@@ -1998,6 +2001,15 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
+         else setPadding(mBinding.control.getRoot());
+     }
+ 
++    private void updateLiveStatusBarInset(@Nullable WindowInsetsCompat insets) {
++        if (mBinding.statusBar == null) return;
++        int top = isEmbeddedLiveUi() && insets != null ? insets.getInsets(WindowInsetsCompat.Type.statusBars()).top : 0;
++        ViewGroup.LayoutParams params = mBinding.statusBar.getLayoutParams();
++        if (params.height == top) return;
++        params.height = top;
++        mBinding.statusBar.setLayoutParams(params);
++    }
++
+     private void updateLiveListBottomInset(@Nullable WindowInsetsCompat insets) {
+         int bottom = isEmbeddedLiveUi() && insets != null ? insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom : 0;
+         int extra = isEmbeddedLiveUi() ? bottom + ResUtil.dp2px(6) : 0;
+diff --git a/app/src/mobile/res/layout/activity_live.xml b/app/src/mobile/res/layout/activity_live.xml
+index 34fc8b90..c4da3c9c 100644
+--- a/app/src/mobile/res/layout/activity_live.xml
++++ b/app/src/mobile/res/layout/activity_live.xml
+@@ -8,6 +8,12 @@
+     android:keepScreenOn="true"
+     android:orientation="vertical">
+ 
++    <View
++        android:id="@+id/statusBar"
++        android:layout_width="match_parent"
++        android:layout_height="0dp"
++        android:background="@color/black" />
++
+     <FrameLayout
+         android:id="@+id/video"
+         android:layout_width="match_parent"
+-- 
+2.39.5
+
