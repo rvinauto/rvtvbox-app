@@ -1,0 +1,109 @@
+name: cleanup-old-runs
+
+# 清理历史垃圾：删掉失败的 workflow run + 超过 N 天的 artifact（占配额的就是它们）。
+# 手动触发，默认只看不删；把 dry_run 改成 false 才真删。
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只列出不删除（true=演练）'
+        type: boolean
+        default: true
+      keep_latest_failures:
+        description: '保留最近几条失败记录'
+        type: string
+        default: '2'
+      artifact_days:
+        description: '删除多少天前的 artifact'
+        type: string
+        default: '3'
+      delete_releases:
+        description: '同时删除 apk-* 的旧 Release'
+        type: boolean
+        default: false
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 清理失败的 run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY: ${{ inputs.dry_run }}
+          KEEP: ${{ inputs.keep_latest_failures }}
+        run: |
+          set -euo pipefail
+          echo "== 失败 run 列表（最近 200 条）"
+          gh run list --status failure --limit 200 \
+            --json databaseId,workflowName,createdAt,headBranch \
+            -q '.[] | "\(.databaseId)\t\(.workflowName)\t\(.createdAt)\t\(.headBranch)"' > runs.tsv || true
+          total=$(wc -l < runs.tsv)
+          echo "失败 run 共 $total 条，保留最近 $KEEP 条"
+          tail -n +$((KEEP + 1)) runs.tsv | while IFS=$'\t' read -r id name date branch; do
+            [ -z "${id:-}" ] && continue
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "[dry] 将删除 run $id ($name @ $date $branch)"
+            else
+              echo "删除 run $id ($name @ $date)"
+              gh run delete "$id" || echo "[warn] 删除 $id 失败"
+            fi
+          done
+
+      - name: 清理旧 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY: ${{ inputs.dry_run }}
+          DAYS: ${{ inputs.artifact_days }}
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d "-${DAYS} days" +%Y-%m-%dT%H:%M:%SZ)
+          echo "删除 $cutoff 之前的 artifact"
+          gh api "repos/${{ github.repository }}/actions/artifacts?per_page=100" --paginate \
+            -q ".artifacts[] | select(.created_at < \"$cutoff\") | \"\(.id)\t\(.name)\t\(.size_in_bytes)\t\(.created_at)\"" \
+            > arts.tsv || true
+          n=$(wc -l < arts.tsv || echo 0)
+          echo "待清理 artifact $n 个"
+          cut -f3 arts.tsv 2>/dev/null | awk '{s+=$1} END {printf "合计 %.1f MB\n", s/1048576}' || true
+          while IFS=$'\t' read -r id name size created; do
+            [ -z "${id:-}" ] && continue
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "[dry] 将删除 artifact $id ($name, $size bytes, $created)"
+            else
+              gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id" \
+                && echo "已删除 artifact $id ($name)" || echo "[warn] 删除 $id 失败"
+            fi
+          done < arts.tsv
+
+      - name: 清理旧 Release（可选）
+        if: inputs.delete_releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          gh release list --limit 200 --json tagName,createdAt \
+            -q '.[] | select(.tagName | startswith("apk-")) | "\(.tagName)\t\(.createdAt)"' > rels.tsv || true
+          # 只保留最新 3 个 apk-* Release
+          total=$(wc -l < rels.tsv); keep=3
+          echo "apk-* Release 共 $total 个，保留最新 $keep 个"
+          tail -n +$((keep + 1)) rels.tsv | while IFS=$'\t' read -r tag created; do
+            [ -z "${tag:-}" ] && continue
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "[dry] 将删除 release $tag ($created)"
+            else
+              gh release delete "$tag" --yes --cleanup-tag && echo "已删除 release $tag" || echo "[warn] 删除 $tag 失败"
+            fi
+          done
+
+      - name: 汇总
+        run: |
+          echo "== 当前状态"
+          gh run list --limit 5 || true
+          gh release list --limit 5 || true
+        env:
+          GH_TOKEN: ${{ github.token }}
