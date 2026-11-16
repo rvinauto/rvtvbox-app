@@ -32,6 +32,18 @@ git remote add origin git@github.com:<you>/<repo>.git && git push -u origin main
 
 推送后在 Actions 页手动触发 `build-xingchen-apk`，跑完在 run 页面底部下载 `xingchen-apk` artifact。
 
+## CI 环境要点（踩过的坑）
+
+1. **`android-actions/setup-android@v3` 别用**：它默认要装 `tools` 包，而 runner 的 `cmdline-tools 16.0`
+   已经删了这个包，会直接 `Failed to find package 'tools'` 失败。改用 runner 预装的 `sdkmanager`。
+2. **API 37 不在 sdkmanager 稳定通道**：`platforms;android-37.0` 装不上，要直接下官方 archive
+   `https://dl.google.com/android/repository/platform-37.0_r01.zip` 解到 `$ANDROID_HOME/platforms/android-37`。
+3. **Chaquopy 强制 Python 3.10**：缺了会报 `Couldn't find Python 3.10`。必须 `actions/setup-python@v5`
+   装 3.10，并把路径通过 `-PchaquopyBuildPython=` 传进去（fork 的 `chaquo/build.gradle` 支持这个属性；
+   星辰的不支持，靠 PATH）。
+
+这三条都收进 `.github/actions/setup-android-env/action.yml` 这个 composite action，三个 workflow 共用一份。
+
 ## 固定版本（可复现）
 
 | 项 | 值 |
@@ -52,7 +64,9 @@ git remote add origin git@github.com:<you>/<repo>.git && git push -u origin main
 ## 目录
 
 ```
+.github/actions/setup-android-env/action.yml   # 共用环境：JDK21 + Py3.10 + SDK37
 .github/workflows/build-xingchen-apk.yml
+.github/workflows/build-webhtv-apk.yml
 .github/workflows/verify-webhtv-absorb.yml
 xingchen/scripts/build.sh          # 取源码 + 下依赖 + 临时签名 + 出包
 webhtv/scripts/apply.sh            # 取 fork + git apply 补丁 + 双 ABI 编译（校验用）

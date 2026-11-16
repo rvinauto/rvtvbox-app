@@ -42,9 +42,23 @@ fi
   echo "keyPassword=webhtv"
 } >> local.properties
 
+
+echo "== 定位 Python 3.10（Chaquopy 强制要求）"
+PY310="$(command -v python3.10 || true)"
+if [ -z "$PY310" ]; then
+  PY310="$(python3 -c 'import sys; print(sys.executable) if sys.version_info[:2]==(3,10) else ""' 2>/dev/null || true)"
+fi
+if [ -z "$PY310" ]; then
+  echo "[warn] 未找到 Python 3.10，Chaquopy 可能报 'Couldn't find Python 3.10'"; PY310=""
+else
+  echo "buildPython=$PY310"
+fi
+GRADLE_ARGS=()
+if [ -n "$PY310" ]; then GRADLE_ARGS+=("-PchaquopyBuildPython=$PY310"); fi
+
 echo "== 4/5 构建 $TASK"
 chmod +x gradlew
-./gradlew "$TASK" --no-daemon
+./gradlew "$TASK" ${GRADLE_ARGS[@]+"${GRADLE_ARGS[@]}"} --no-daemon
 
 echo "== 5/5 产物"
 find app/build/outputs/apk -name '*.apk' -exec ls -lh {} \;

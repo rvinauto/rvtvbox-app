@@ -20,22 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'jetbrains'
-          java-version: '21.0.3'
-
-      - name: Install SDK packages (use preinstalled cmdline-tools)
-        run: |
-          SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)"
-          echo "sdkmanager: $SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          for p in "platforms;android-37.0" "platforms;android-37.1" "platforms;android-37.2" \
-                   "build-tools;37.0.0" "ndk;29.0.14206865" "cmake;3.22.1"; do
-            echo "--- $p"
-            "$SDKMANAGER" "$p" >/dev/null 2>&1 || echo "[warn] $p 装不上，交给 AGP 自动下载"
-          done
+      - name: Setup Android build env (JDK 21 + Python 3.10 + SDK 37)
+        uses: ./.github/actions/setup-android-env
 
       - name: Build absorbed APK
         run: bash webhtv/scripts/build-apk.sh "$RUNNER_TEMP/webhtv-fork"

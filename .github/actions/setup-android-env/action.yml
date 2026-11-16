@@ -1,0 +1,58 @@
+name: Setup Android build env
+description: JDK 21 + Python 3.10 + Android SDK 37（platform-37 走官方 archive，sdkmanager 稳定通道里没有 API 37）
+
+inputs:
+  java-version:
+    description: JDK 版本
+    required: false
+    default: '21.0.3'
+  python-version:
+    description: Python 版本（Chaquopy 必须 3.10）
+    required: false
+    default: '3.10'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup JDK
+      uses: actions/setup-java@v5
+      with:
+        distribution: 'jetbrains'
+        java-version: ${{ inputs.java-version }}
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Setup Android SDK packages
+      shell: bash
+      run: |
+        set -e
+        SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+        SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)"
+        echo "sdkmanager: $SDKMANAGER"
+        yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+        for p in "platform-tools" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"; do
+          echo "--- $p"
+          "$SDKMANAGER" "$p" >/dev/null 2>&1 || echo "[warn] $p 装不上，交给 AGP 自动下载"
+        done
+
+    - name: Install platform-37 (not in sdkmanager stable channel)
+      shell: bash
+      run: |
+        set -e
+        SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+        if [ -f "$SDK/platforms/android-37/android.jar" ]; then
+          echo "platforms/android-37 已存在，跳过"
+        else
+          curl -fsSL -o /tmp/platform-37.zip https://dl.google.com/android/repository/platform-37.0_r01.zip
+          rm -rf /tmp/platform-37 "$SDK/platforms/android-37"
+          mkdir -p /tmp/platform-37 "$SDK/platforms"
+          unzip -q /tmp/platform-37.zip -d /tmp/platform-37
+          platform_jar="$(find /tmp/platform-37 -name android.jar -print -quit)"
+          test -n "$platform_jar"
+          mv "$(dirname "$platform_jar")" "$SDK/platforms/android-37"
+        fi
+        ls -d "$SDK/platforms/"* | sed 's/^/platforms: /'
+        python3 -c "import sys; print('python:', sys.version.split()[0], sys.executable)"
