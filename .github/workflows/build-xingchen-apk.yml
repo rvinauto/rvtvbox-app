@@ -30,16 +30,15 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK 37 / build-tools 37 / NDK 29 / CMake 3.22.1
+      - name: Install SDK packages (use preinstalled cmdline-tools)
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)"
+          echo "sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           for p in "platforms;android-37.0" "platforms;android-37.1" "platforms;android-37.2" \
                    "build-tools;37.0.0" "ndk;29.0.14206865" "cmake;3.22.1"; do
             echo "--- $p"
-            sdkmanager "$p" >/dev/null 2>&1 || echo "[warn] $p 装不上，交给 AGP 自动下载"
+            "$SDKMANAGER" "$p" >/dev/null 2>&1 || echo "[warn] $p 装不上，交给 AGP 自动下载"
           done
           sdkmanager --list_installed | sed -n '1,20p'
 
