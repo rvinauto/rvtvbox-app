@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
+      max-parallel: 2   # 并发太高会撞 GitHub API 匿名限流
       matrix:
         include:
           - flavor: mobileArm64_v8a

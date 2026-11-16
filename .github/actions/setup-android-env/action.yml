@@ -5,7 +5,7 @@ inputs:
   java-version:
     description: JDK 版本
     required: false
-    default: '21.0.3'
+    default: '21'
   python-version:
     description: Python 版本（Chaquopy 必须 3.10）
     required: false
@@ -17,8 +17,11 @@ runs:
     - name: Setup JDK
       uses: actions/setup-java@v5
       with:
-        distribution: 'jetbrains'
+        # temurin 不查 GitHub API；jetbrains 分发在并发 job 下会撞匿名限流
+        distribution: 'temurin'
         java-version: ${{ inputs.java-version }}
+        token: ${{ github.token }}
+        cache: 'gradle'
 
     - name: Setup Python
       uses: actions/setup-python@v5
